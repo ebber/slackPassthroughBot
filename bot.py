@@ -3,6 +3,8 @@ import time
 import re
 from slackclient import SlackClient
 import config
+import logging
+logging.basicConfig()
 
 # instantiate Slack client
 slack_client = SlackClient(config.BOT_OAUTH_A_T)

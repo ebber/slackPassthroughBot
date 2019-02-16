@@ -3,6 +3,8 @@ import time
 import re
 from slackclient import SlackClient
 import config
+import logging
+logging.basicConfig()
 
 # instantiate Slack client
 slack_client = SlackClient(config.BOT_OAUTH_A_T)
@@ -47,9 +49,10 @@ def parse_events(slack_events):
         If its not found, then this function returns None, None.
     """
     for event in slack_events:
-        print event
         is_botMsg = "subtype" in event.keys() and event["subtype"] == "bot_message"
         if event["type"] == "message" and  not is_botMsg:
+            print event
+            print event["channel"] == config.RECEIVE_CHANNEL, get_user_email(event["user"]) , config.RECEIVE_USER_EMAIL
             user_id, message = parse_direct_mention(event["text"])
             if user_id == starterbot_id: #direct message @bot
                 return message, event["channel"], event["user"]
