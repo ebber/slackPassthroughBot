@@ -1,0 +1,108 @@
+import os
+import time
+import re
+from slackclient import SlackClient
+import config
+
+# instantiate Slack client
+slack_client = SlackClient(config.BOT_OAUTH_A_T)
+# starterbot's user ID in Slack: value is assigned after the bot starts up
+starterbot_id = None
+
+# constants
+RTM_READ_DELAY = 1 # 1 second delay between reading from RTM
+EXAMPLE_COMMAND = "do"
+MENTION_REGEX = "^<@(|[WU].+?)>(.*)"
+
+
+
+
+#helper functions
+
+def parse_direct_mention(message_text):
+    """
+        Finds a direct mention (a mention that is at the beginning) in message text
+        and returns the user ID which was mentioned. If there is no direct mention, returns None
+    """
+    matches = re.search(MENTION_REGEX, message_text)
+    # the first group contains the username, the second group contains the remaining message
+    return (matches.group(1), matches.group(2).strip()) if matches else (None, None)
+
+def get_user_email(user_id):
+    user_obj = slack_client.api_call(
+            "users.info",
+            user=user_id)
+    return user_obj["user"]["profile"]["email"]
+
+def get_username(user_id):
+    user_obj = slack_client.api_call(
+            "users.info",
+            user=user_id)
+    return user_obj["user"]["profile"]["real_name"]
+
+def parse_events(slack_events):
+    """
+        Parses a list of events coming from the Slack RTM API to find messages directed at the bot.
+        If a bot command is found, this function returns a tuple of message text and if it was a DM the channel, and the id of the user
+        If its not found, then this function returns None, None.
+    """
+    for event in slack_events:
+        print event
+        is_botMsg = "subtype" in event.keys() and event["subtype"] == "bot_message"
+        if event["type"] == "message" and  not is_botMsg:
+            user_id, message = parse_direct_mention(event["text"])
+            if user_id == starterbot_id: #direct message @bot
+                return message, event["channel"], event["user"]
+            elif event["channel"] == config.RECEIVE_CHANNEL and get_user_email(event["user"]) == config.RECEIVE_USER_EMAIL:
+                return event["text"], None, event["user"]
+    return None, None, None
+
+
+
+
+def broadcast_msg(msg, user):
+    print "Broadcasting"
+    message = msg + "\n -" + get_username(user)
+    slack_client.api_call(
+        "chat.postMessage",
+        channel=config.BROADCAST_CHANNEL,
+        text=message
+    )
+
+def handle_command(command, channel):
+    """
+        Executes bot command if the command is known
+    """
+    # Default response is help text for the user
+    default_response = "I am a simple bot made to pass communication through to a team, made by Erik Beitel. netid:beitel2 of team 15".format(EXAMPLE_COMMAND)
+
+    # Finds and executes the given command, filling in response
+    response = None
+    # This is where you start to implement more commands!
+    if command.startswith(EXAMPLE_COMMAND):
+        response = "Sure...write some more code then I can do that!"
+
+    # Sends the response back to the channel
+    slack_client.api_call(
+        "chat.postMessage",
+        channel=channel,
+        text=response or default_response
+    )
+
+if __name__ == "__main__":
+    if slack_client.rtm_connect(with_team_state=False):
+        print("Starter Bot connected and running!")
+        # Read bot's user ID by calling Web API method `auth.test`
+        starterbot_id = slack_client.api_call("auth.test")["user_id"]
+        while True:
+            command, channel, user = parse_events(slack_client.rtm_read())
+            if channel: #was a DM
+                handle_command(command,channel)
+            elif command:
+                broadcast_msg(command, user)
+
+            time.sleep(RTM_READ_DELAY)
+    else:
+        print("Connection failed. Exception traceback printed above.")
+
+
